@@ -2,9 +2,17 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const port = process.env.PORT || 5000;
+
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 app.use(cors({
   origin: '*', 
@@ -12,6 +20,8 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+app.use('/uploads', express.static(uploadDir));
 
 const uri = process.env.MONGODB_URL;
 
@@ -30,7 +40,6 @@ async function connectToDatabase() {
   
   try {
     await client.connect();
-    // 🎯 আপনার নতুন ডাটাবেজ নাম 'PixelWood' এখানে সেট করা আছে
     const db = client.db('PixelWood'); 
     cachedDb = db;
     console.log("Connected to MongoDB Atlas (PixelWood)");
@@ -41,14 +50,73 @@ async function connectToDatabase() {
   }
 }
 
-// Root Route
-app.get('/', (req, res) => {
-  res.json({ message: 'Server is live and running' });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir); 
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname)); 
+  }
 });
 
-// ==========================================
-// SITE VIEWS ENDPOINTS
-// ==========================================
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Shudhu matro images allowed!'), false);
+  }
+};
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } 
+});
+
+
+app.get('/', (req, res) => {
+  res.json({ message: 'Server is live and running successfully' });
+});
+
+
+app.post("/api/slider-images", upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "Kono file select kora hoyni!" });
+    }
+
+    const database = await connectToDatabase();
+    const collection = database.collection("slider_images"); 
+
+    const imagePath = `/uploads/${req.file.filename}`;
+    const newImageDoc = {
+      imageUrl: imagePath,
+      createdAt: new Date()
+    };
+
+    const result = await collection.insertOne(newImageDoc);
+    res.status(201).json({ success: true, _id: result.insertedId, imageUrl: imagePath });
+  } catch (error) {
+    console.error("Upload Endpoint Error:", error);
+    res.status(500).json({ success: false, error: error.message || "Image save korte somossa hoyeche" });
+  }
+});
+
+app.get("/api/slider-images", async (req, res) => {
+  try {
+    const database = await connectToDatabase();
+    const collection = database.collection("slider_images");
+    const images = await collection.find().sort({ createdAt: -1 }).toArray();
+    res.json(images);
+  } catch (error) {
+    console.error("GET Slider Images Error:", error);
+    res.status(500).json({ success: false, error: "Could not fetch images" });
+  }
+});
+
+
 app.post("/views/increment", async (req, res) => {
   try {
     const database = await connectToDatabase();
@@ -72,7 +140,6 @@ app.get("/views", async (req, res) => {
   try {
     const database = await connectToDatabase();
     const collection = database.collection("site_views");
-
     const result = await collection.findOne({ identifier: "total_views" });
     res.json({ count: result ? result.count : 0 });
   } catch (error) {
@@ -81,15 +148,11 @@ app.get("/views", async (req, res) => {
   }
 });
 
-// ==========================================
-// ORDERS ENDPOINTS (TARGETING PIXELWOOD COLLECTION)
-// ==========================================
 
-// 1. POST: নতুন অর্ডার সরাসরি 'Pixelwood' কালেকশনে সেভ হবে
+
 app.post("/orders", async (req, res) => {
   try {
     const database = await connectToDatabase();
-    // ✅ পুরানো 'destinations' পরিবর্তন করে 'Pixelwood' কালেকশন করা হলো
     const collection = database.collection("Pixelwood"); 
 
     const offset = new Date().getTimezoneOffset() * 60000;
@@ -108,11 +171,9 @@ app.post("/orders", async (req, res) => {
   }
 });
 
-// 2. GET: 'Pixelwood' কালেকশন থেকে সব ডেটা নিয়ে আসবে
 app.get("/orders", async (req, res) => {
   try {
     const database = await connectToDatabase();
-    // ✅ কালেকশনের নাম পরিবর্তন করে 'Pixelwood' করা হলো
     const collection = database.collection("Pixelwood"); 
     const result = await collection.find().toArray();
     res.json(result);
@@ -122,11 +183,9 @@ app.get("/orders", async (req, res) => {
   }
 });
 
-// 3. GET Single: আইডি দিয়ে নির্দিষ্ট একটি অর্ডার খুঁজবে 'Pixelwood' থেকে
 app.get("/orders/:id", async (req, res) => {
   try {
     const database = await connectToDatabase();
-    // ✅ কালেকশনের নাম পরিবর্তন করে 'Pixelwood' করা হলো
     const collection = database.collection("Pixelwood");
     const id = req.params.id;
 
@@ -145,11 +204,9 @@ app.get("/orders/:id", async (req, res) => {
   }
 });
 
-// 4. PATCH: আইডি অনুযায়ী 'Pixelwood' কালেকশনের অর্ডার আপডেট করবে
 app.patch("/orders/:id", async (req, res) => {
   try {
     const database = await connectToDatabase();
-    // ✅ কালেকশনের নাম পরিবর্তন করে 'Pixelwood' করা হলো
     const collection = database.collection("Pixelwood");
     const id = req.params.id;
     
@@ -170,10 +227,17 @@ app.patch("/orders/:id", async (req, res) => {
   }
 });
 
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ success: false, error: `Multer Error: ${err.message}` });
+  }
+  res.status(500).json({ success: false, error: err.message });
+});
+
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production') {
   app.listen(port, () => {
     console.log(`Server running locally on port ${port}`);
   });
-}
+}       
