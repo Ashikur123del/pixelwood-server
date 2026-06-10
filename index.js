@@ -162,7 +162,6 @@ app.post("/orders", async (req, res) => {
   } catch (error) { res.status(500).json({ success: false }); }
 });
 
-// সব অর্ডার গেট রাউট
 app.get("/orders", async (req, res) => {
   try {
     const database = await connectToDatabase();
@@ -212,3 +211,4 @@ app.listen(port, () => {
 });
 
 module.exports = app;
+
