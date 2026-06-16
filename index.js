@@ -9,7 +9,7 @@ const cloudinary = require('cloudinary').v2;
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Cloudinary Configuration
+
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.API_KEY,
